@@ -1,98 +1,113 @@
-import json
-import pandas as pd
-import sentencepiece as spm
+import os, json, argparse, torch
+from datasets import load_dataset
+from transformers import set_seed
+from transformers import T5TokenizerFast
+from transformers import T5ForConditionalGeneration
+
+from run import Config, set_training_args
+from module.data import load_dataloader
+from module.train import Trainer
+
+
+def process_data(orig_data, tokenizer, volumn=12000):
+    min_len = 10 
+    max_len = 300
+    max_diff = 50
+    prefix = 'translate English to German: '
+
+    volumn_cnt = 0
+    processed = []
+
+    for elem in orig_data:
+        src, trg = elem['en'].lower(), elem['de'].lower()
+        src_len, trg_len = len(src), len(trg)
+
+        #define filtering conditions
+        min_condition = (src_len >= min_len) & (trg_len >= min_len)
+        max_condition = (src_len <= max_len) & (trg_len <= max_len)
+        dif_condition = abs(src_len - trg_len) < max_diff
+
+        if max_condition & min_condition & dif_condition:
+            temp = dict()
+
+            src_tokenized = tokenizer(prefix + src, max_length=512, truncation=True, padding=True)
+            trg_tokenized = tokenizer(trg, max_length=512, truncation=True, padding=True)
+
+            temp['src_ids'] = src_tokenized['input_ids']
+            temp['src_attention_mask'] = src_tokenized['attention_mask']
+            temp['trg'] = trg_tokenized['input_ids']
+            temp['trg_attention_mask'] = src_tokenized['attention_mask']
+
+            processed.append(temp)
+            del temp
+            
+            #End condition
+            volumn_cnt += 1
+            if volumn_cnt == volumn:
+                break
+
+    return processed
 
 
 
-def load_data(data_name):
-    df = pd.read_excel(f'd_name')
-    src_list = df.iloc[:, -2].values.tolist()
-    trg_list = df.iloc[:, -1].values.tolist()
+def save_data(data_obj):
+    #split data into train/valid/test sets
+    train, valid, test = data_obj[:-2000], data_obj[-2000:-1000], data_obj[-1000:]
+    data_dict = {k:v for k, v in zip(['train', 'valid', 'test'], [train, valid, test])}
 
-    return src_list, trg_list
+    for key, val in data_dict.items():
+        with open(f'data/{key}.json', 'w') as f:
+            json.dump(val, f)        
+        assert os.path.exists(f'data/{key}.json')
 
 
 
-def build_vocab(lang):
-    assert os.path.exists('configs/vocab.yaml')
-    assert os.path.exists(f'data/{lang}_concat.txt')
+def setup_data():
+    #Load Original Data & Pretrained Tokenizer
+    orig = load_dataset('wmt14', 'de-en', split='train')['translation']
+    tokenizer = T5TokenizerFast.from_pretrained('t5-small', model_max_length=512)
 
-    with open('configs/vocab.yaml', 'r') as f:
-        vocab_dict = yaml.load(f, Loader=yaml.FullLoader)
+    #PreProcess Data
+    processed = process_data(orig, tokenizer)
     
-    opt = f"--input=data/{lang}_concat.txt\
-            --model_prefix=data/{lang}_tokenizer\
-            --vocab_size={vocab_dict['vocab_size']}\
-            --character_coverage={vocab_dict['coverage']}\
-            --model_type={vocab_dict['type']}\
-            --unk_id={vocab_dict['unk_id']} --unk_piece={vocab_dict['unk_piece']}\
-            --pad_id={vocab_dict['pad_id']} --pad_piece={vocab_dict['pad_piece']}\
-            --bos_id={vocab_dict['bos_id']} --bos_piece={vocab_dict['bos_piece']}\
-            --eos_id={vocab_dict['eos_id']} --eos_piece={vocab_dict['eos_piece']}"
+    #Save Data
+    save_data(processed)
+    print('--- Data Setup Completed!')
 
-    spm.SentencePieceTrainer.Train(opt)
-    os.remove(f'data/{lang}_concat.txt')
+
+def generate_synthetics(config, model, tokenizer, train_dataloader):
+    return
 
 
 
-def load_tokenizers():
-    tokenizers = []
-    for lang in ['src', 'trg']:
-        tokenizer = spm.SentencePieceProcessor()
-        tokenizer.load(f'data/{lang}_tokenizer.model')
-        tokenizer.SetEncodeExtraOptions('bos:eos')    
-        tokenizers.append(tokenizer)
-    return tokenizers
+def setup_back():
+    set_seed(42)
+    config = Config(task='back_translation')
+    model = T5ForConditionalGeneration.from_pretrained('t5-small')
 
-
-def tokenize_data(src_data, trg_data, src_tokenizer, trg_tokenizer):
-    tokenized_data = []
-    for src, trg in zip(src_data, trg_data):
-        temp_dict = dict()
-        
-        temp_dict['src'] = src_tokenizer.EncodeAsIds(src)
-        temp_dict['trg'] = trg_tokenizer.EncodeAsIds(trg)
-        
-        tokenized_data.append(temp_dict)
-
-    return tokenized_data
-
-
-
-def save_data(data_obj, data_name, format):
-    if format == 'json'
-        with open(f"data/{data_name}.{format}", 'w') as f:
-            json.dump(data_obj)
-
-    elif format == 'txt':
-        with open(f"data/{data_name}.{format}", 'w') as f:
-            f.write(data_obj)
-
-
-
-def main():
-    src, trg = [], []
-    for d_name in ['1_구어체(1).xlsx', '1_구어체(2).xlsx']:
-        assert os.path.exists(f'data/{d_name}')
-        _src, _trg = load_data(d_name)
-        src.extend(_src)
-        trg.extend(_trg)
-
-    save_data(src, 'src_concat', 'txt')
-    save_data(trg, 'trg_concat', 'txt')
-    build_vocab('src')
-    build_vocab('trg')
-
-    src_tokenizer, trg_tokenizer = load_tokenizers()
-    data = tokenize_data(src, trg, src_tokenizer, trg_tokenizer)
+    train_dataloader = load_dataloader(config, 'train')
+    valid_dataloader = load_dataloader(config, 'valid')
     
-    train, valid, test = data[:-6000], data[-6000:-3000], data[-3000:]
+    trainer = Trianer(config, model, train_dataloader, valid_dataloader)
+    trainer.train()
 
-    save_data(train, 'train', 'json')
-    save_data(valid, 'valid', 'json')
-    save_data(test, 'test', 'json')
+    model.generate()    
+
+    return
+
+
+
 
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-task', type=str, required=True)
+
+    args = parser.parse_args()
+    assert args.task in ['data', 'back_translation']
+
+    if args.task == 'data':
+        setup_data()
+    else:
+        setup_back()

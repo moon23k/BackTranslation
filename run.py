@@ -104,9 +104,9 @@ def main(config):
     
 
 if __name__ == '__main__':
-    assert os.path.exists(f'data/train.json')
-    assert os.path.exists(f'data/valid.json')
-    assert os.path.exists(f'data/test.json')
+    #Check if data files exist
+    for split in ['train', 'valid', 'test']:
+        assert os.path.exists(f'data/{split}.json')
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-task', type=str, required=True)
@@ -115,8 +115,8 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     assert args.task in ['train', 'test', 'inference']
-    assert args.model in ['transformer', 'bert', 'multi_bert', 'ko_bert']
  
+
     set_seed()
     config = Config(args)
     main(config)
