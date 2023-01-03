@@ -6,9 +6,11 @@ import torch.optim as optim
 
 
 class Trainer:
-    def __init__(self, config, model, train_dataloader, valid_dataloader=None):
+    def __init__(self, config, model, train_dataloader, valid_dataloader):
         super(Trainer, self).__init__()
+        
         self.model = model
+        self.task = config.task
         self.clip = config.clip
         self.device = config.device
         self.n_epochs = config.n_epochs
@@ -53,17 +55,18 @@ class Trainer:
 
 
     def split_batch(self, batch):
-    	if 'back' not in self.task:
-    		input_ids = batch['src_ids']
-    		attention_mask =  batch['src_mask']
-    		labels = batch['trg_ids']
+        if self.task == 'translation':
+            input_ids = batch['src_ids']
+            attention_mask =  batch['src_mask']
+            labels = batch['trg_ids']
 
-    	elif 'back' in self.task:
-    		input_ids = batch['trg_ids']
-    		attention_mask =  batch['trg_mask']
-    		labels = batch['trg_ids']
-
-    	return input_ids.to(self.device), attention_mask.to(self.device), labels.to(self.device)
+        elif self.task == 'back_translation':
+            input_ids = batch['trg_ids']
+            attention_mask = batch['trg_mask']
+            labels = batch['src_ids']
+        
+        labels[labels==0] = -100
+        return input_ids.to(self.device), attention_mask.to(self.device), labels.to(self.device)
 
 
     def train(self):
@@ -101,12 +104,12 @@ class Trainer:
         tot_len = len(self.train_dataloader)
 
         for idx, batch in enumerate(self.train_dataloader):
-            input_ids, attention_mask, labels = split_batch(batch)
+            input_ids, attention_mask, labels = self.split_batch(batch)
 
             with torch.autocast(device_type=self.device_type, dtype=torch.float16):
                 loss = self.model(input_ids = input_ids, 
-                                   attention_mask = attention_mask,
-                                   labels = labels)[0]
+                                  attention_mask = attention_mask,
+                                  labels = labels)[0]
                 loss = loss / self.iters_to_accumulate
             
             #Backward Loss
@@ -122,8 +125,8 @@ class Trainer:
                 self.scaler.update()
                 self.optimizer.zero_grad()
    
-            gc.collect()
-            torch.cuda.empty_cache()
+            #gc.collect()
+            #torch.cuda.empty_cache()
 
             epoch_loss += loss.item()
         
@@ -138,16 +141,16 @@ class Trainer:
         tot_len = len(self.valid_dataloader)
         
         with torch.no_grad():
-            for _, batch in enumerate(self.valid_dataloader):	
-				input_ids, attention_mask, labels = split_batch(batch)           
+            for _, batch in enumerate(self.valid_dataloader):   
+                input_ids, attention_mask, labels = self.split_batch(batch)           
                 
                 with torch.autocast(device_type=self.device_type, dtype=torch.float16):
                     loss = self.model(input_ids = input_ids, 
                                       attention_mask = attention_mask,
                                       labels = labels)[0]
                 
-                gc.collect()
-                torch.cuda.empty_cache()
+                #gc.collect()
+                #torch.cuda.empty_cache()
 
                 epoch_loss += loss.item()
         

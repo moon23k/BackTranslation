@@ -1,19 +1,18 @@
-import os, json, argparse, torch
-from datasets import load_dataset
-from transformers import set_seed
-from transformers import T5TokenizerFast
-from transformers import T5ForConditionalGeneration
-
-from run import Config, set_training_args
-from module.data import load_dataloader
+import os, json, torch, argparse
+from run import Config
 from module.train import Trainer
+from module.data import load_dataloader
+
+from datasets import load_dataset
+from transformers import (set_seed, 
+                          T5TokenizerFast, 
+                          T5ForConditionalGeneration)
 
 
 def process_data(orig_data, tokenizer, volumn=12000):
     min_len = 10 
     max_len = 300
     max_diff = 50
-    prefix = 'translate English to German: '
 
     volumn_cnt = 0
     processed = []
@@ -30,13 +29,13 @@ def process_data(orig_data, tokenizer, volumn=12000):
         if max_condition & min_condition & dif_condition:
             temp = dict()
 
-            src_tokenized = tokenizer(prefix + src, max_length=512, truncation=True, padding=True)
-            trg_tokenized = tokenizer(trg, max_length=512, truncation=True, padding=True)
+            src_tokenized = tokenizer(src, max_length=300, truncation=True, padding=True)
+            trg_tokenized = tokenizer(trg, max_length=300, truncation=True, padding=True)
 
             temp['src_ids'] = src_tokenized['input_ids']
-            temp['src_attention_mask'] = src_tokenized['attention_mask']
+            temp['src_mask'] = src_tokenized['attention_mask']
             temp['trg'] = trg_tokenized['input_ids']
-            temp['trg_attention_mask'] = src_tokenized['attention_mask']
+            temp['trg_mask'] = src_tokenized['attention_mask']
 
             processed.append(temp)
             del temp
@@ -50,37 +49,30 @@ def process_data(orig_data, tokenizer, volumn=12000):
 
 
 
-def save_data(data_obj):
-    #split data into train/valid/test sets
-    train, valid, test = data_obj[:-2000], data_obj[-2000:-1000], data_obj[-1000:]
+def setup_data():
+    #Load Original Data & Pretrained Tokenizer
+    orig = load_dataset('wmt14', 'de-en', split='train')['translation']
+    tokenizer = T5TokenizerFast.from_pretrained('t5-small', model_max_length=300)
+
+    #PreProcess Data
+    processed = process_data(orig, tokenizer)
+    
+    #Save Data
+    train, valid, test = processed[:-2000], processed[-2000:-1000], processed[-1000:]
     data_dict = {k:v for k, v in zip(['train', 'valid', 'test'], [train, valid, test])}
 
     for key, val in data_dict.items():
         with open(f'data/{key}.json', 'w') as f:
             json.dump(val, f)        
         assert os.path.exists(f'data/{key}.json')
-
-
-
-def setup_data():
-    #Load Original Data & Pretrained Tokenizer
-    orig = load_dataset('wmt14', 'de-en', split='train')['translation']
-    tokenizer = T5TokenizerFast.from_pretrained('t5-small', model_max_length=512)
-
-    #PreProcess Data
-    processed = process_data(orig, tokenizer)
-    
-    #Save Data
-    save_data(processed)
+        
     print('--- Data Setup Completed!')
 
-
-def generate_synthetics(config, model, tokenizer, train_dataloader):
-    return
 
 
 
 def setup_back():
+    #Train Back Translation Model
     set_seed(42)
     config = Config(task='back_translation')
     model = T5ForConditionalGeneration.from_pretrained('t5-small')
@@ -88,24 +80,42 @@ def setup_back():
     train_dataloader = load_dataloader(config, 'train')
     valid_dataloader = load_dataloader(config, 'valid')
     
-    trainer = Trianer(config, model, train_dataloader, valid_dataloader)
+    trainer = Trainer(config, model, train_dataloader, valid_dataloader)
     trainer.train()
 
-    model.generate()    
 
-    return
+    #Generate Synthetic data with trained BackTranslation Model
+    assert os.path.exists(f'ckpt/{config.task}.pt')
+    model_state = torch.load(config.ckpt, map_location=config.device)['model_state_dict']
+    model.load_state_dict(model_state)
+
+    synthetics = []
+    for idx, batch in enumerate(train_dataloader):
+        temp = dict()
+
+        pred_ids = model.gerneate(batch['trg_ids'].to(config.device))
+        pred_mask = torch.ones() #generate mask
+
+        temp['src_ids'] = pred_ids.tolist()
+        temp['src_mask'] = pred_mask.tolist()
+        temp['trg_ids'] = batch['trg_ids'].tolist()
+        temp['trg_mask'] = batch['trg_mask'].tolist()
+
+        synthetics.append(temp)
 
 
-
+    with open('data/synthetic.json', 'w') as f:
+        json.dump(synthetics, f)
+    print('--- Back Translation Setup Completed!')
 
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-task', type=str, required=True)
+    print('Setup Process Started!')
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-task', required=True)
     args = parser.parse_args()
-    assert args.task in ['data', 'back_translation']
 
     if args.task == 'data':
         setup_data()
