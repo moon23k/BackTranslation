@@ -7,15 +7,18 @@ from module.train import Trainer
 from module.data import load_dataloader
 
 from transformers import (set_seed,
-                          T5Config, 
-                          T5TokenizerFast, 
-                          T5ForConditionalGeneration)
+                          BartConfig, 
+                          PreTrainedTokenizerFast, 
+                          BartForConditionalGeneration)
 
 
 class Config(object):
-    def __init__(self, args):    
-        self.task = args.task
-        self.mode = args.mode
+    def __init__(self, src, trg, mode):    
+
+        self.src = src
+        self.trg = trg
+        self.mode = mode
+        self.task = f"{src}-{trg}"
         self.ckpt = f"ckpt/{self.task}.pt"
 
         self.clip = 1
@@ -23,11 +26,12 @@ class Config(object):
         self.batch_size = 16
         self.learning_rate = 5e-5
         self.iters_to_accumulate = 4
-
+        self.model_name = f'circulus/kobart-trans-{self.task}-v2'
+        
         use_cuda = torch.cuda.is_available()
         self.device_type = 'cuda' if use_cuda else 'cpu'
 
-        if self.task == 'inference':
+        if self.mode == 'inference':
             self.device = torch.device('cpu')
         else:
             self.device = torch.device('cuda' if use_cuda else 'cpu')
@@ -40,14 +44,14 @@ class Config(object):
 
 def load_model(config):
     if config.mode == 'train':
-        model = T5ForConditionalGeneration.from_pretrained('t5-small')
-        print("Pretrained T5-Small Model for has loaded")
+        model = BartForConditionalGeneration.from_pretrained(config.model_name)
+        print(f"Pretrained {config.task.upper()} BART Model for has loaded")
     
     if config.mode != 'train':
         assert os.path.exists(config.ckpt)
-        model_config = T5Config.from_pretrained('t5-small')
-        model = T5ForConditionalGeneration(model_config)
-        print("Initialized T5-Small Model has loaded")
+        model_config = BartConfig.from_pretrained(config.model_name)
+        model = BartForConditionalGeneration(model_config)
+        print(f"Initialized {config.task.upper()} BART Model has loaded")
 
         model_state = torch.load(config.ckpt, map_location=config.device)['model_state_dict']
         model.load_state_dict(model_state)
@@ -76,6 +80,7 @@ def load_model(config):
 
 
 def inference(model, tokenizer):
+    model.eval()
     print(f'--- Inference Process Started! ---')
     print('[ Type "quit" on user input to stop the Process ]')
     
@@ -96,29 +101,35 @@ def inference(model, tokenizer):
         print(f"Model Out Sequence >> {output_seq}")       
 
 
+def train(config, model):
+    train_dataloader = load_dataloader(config, 'train')
+    valid_dataloader = load_dataloader(config, 'valid')
+    trainer = Trainer(config, model, train_dataloader, valid_dataloader)
+    trainer.train()
+
+
+def test(config, model, tokenizer):
+    test_dataloader = load_dataloader(config, 'test')
+    tester = Tester(config, model, tokenizer, test_dataloader)
+    tester.test()    
+    return
+
 
 def main(args):
-    set_seed()
-    config = Config(args)
+    set_seed(42)
+    config = Config(args.task, args.task)
     model = load_model(config)
 
     setattr(config, 'pad_id', model.config.pad_token_id)
-    setattr(config, 'max_length', model.config.max_length)
-    setattr(config, 'num_beams', model.config.num_beams)
 
     if config.task != 'train':
-        tokenizer = T5TokenizerFast.from_pretrained('t5-small', model_max_length=300)
+        tokenizer = PreTrainedTokenizerFast.from_pretrained(config.model_name, model_max_length=300)
 
     if config.mode == 'train':
-        train_dataloader = load_dataloader(config, 'train')
-        valid_dataloader = load_dataloader(config, 'valid')
-        trainer = Trainer(config, model, train_dataloader, valid_dataloader)
-        trainer.train()
+        train(config, model)
     
     elif config.mode == 'test':
-        test_dataloader = load_dataloader(config, 'test')
-        tester = Tester(config, model, tokenizer, test_dataloader)
-        tester.test()
+        test(config, model, tokenizer)
     
     elif config.mode == 'inference':
         inference(model, tokenizer)
@@ -127,11 +138,14 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-task', required=True)
+    parser.add_argument('-src', required=True)
+    parser.add_argument('-trg', required=True)
     parser.add_argument('-mode', required=True)
     
     args = parser.parse_args()
-    assert args.mode in ['translation', 'back_translation']
+
+    assert args.src in ['ko', 'en']
+    assert args.trg in ['ko', 'en']    
     assert args.mode in ['train', 'test', 'inference']
 
     main(args)

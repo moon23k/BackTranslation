@@ -19,13 +19,13 @@ class Dataset(torch.utils.data.Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        src_ids = self.data[idx]['src_ids']
-        src_mask = self.data[idx]['src_mask']
+        ko_ids = self.data[idx]['ko_ids']
+        ko_mask = self.data[idx]['ko_mask']
 
-        trg_ids = self.data[idx]['trg_ids']
-        trg_mask = self.data[idx]['trg_mask']
+        en_ids = self.data[idx]['en_ids']
+        en_mask = self.data[idx]['en_mask']
         
-        return src_ids, src_mask, trg_ids, trg_mask
+        return ko_ids, ko_mask, en_ids, en_mask
 
 
 def pad_batch(batch_list, pad_id):
@@ -36,33 +36,32 @@ def pad_batch(batch_list, pad_id):
 
 def load_dataloader(config, split):
     global pad_id
-    task = config.task
     pad_id = config.pad_id    
 
     def collate_fn(batch):
-        src_ids_batch, src_mask_batch = [], []
-        trg_ids_batch, trg_mask_batch = [], []
+        ko_ids_batch, ko_mask_batch = [], []
+        en_ids_batch, en_mask_batch = [], []
 
-        for src_ids, src_mask, trg_ids, trg_mask in batch:
+        for ko_ids, ko_mask, en_ids, en_mask in batch:
 
-            src_ids_batch.append(torch.LongTensor(src_ids))
-            src_mask_batch.append(torch.LongTensor(src_mask))
+            ko_ids_batch.append(torch.LongTensor(ko_ids))
+            ko_mask_batch.append(torch.LongTensor(ko_mask))
 
-            trg_ids_batch.append(torch.LongTensor(trg_ids))
-            trg_mask_batch.append(torch.LongTensor(trg_mask))
+            en_ids_batch.append(torch.LongTensor(en_ids))
+            en_mask_batch.append(torch.LongTensor(en_mask))
 
         
-        src_ids_batch = pad_batch(src_ids_batch, pad_id)
-        src_mask_batch = pad_batch(src_mask_batch, pad_id)
+        ko_ids_batch = pad_batch(ko_ids_batch, pad_id)
+        ko_mask_batch = pad_batch(ko_mask_batch, pad_id)
         
-        trg_ids_batch = pad_batch(trg_ids_batch, pad_id)
-        trg_mask_batch = pad_batch(trg_mask_batch, pad_id)
+        en_ids_batch = pad_batch(en_ids_batch, pad_id)
+        en_mask_batch = pad_batch(en_mask_batch, pad_id)
 
 
-        return {'src_ids': src_ids_batch, 
-                'src_mask': src_mask_batch,
-                'trg_ids': trg_ids_batch, 
-                'trg_mask': trg_mask_batch}
+        return {'ko_ids': ko_ids_batch, 
+                'ko_mask': ko_mask_batch,
+                'en_ids': en_ids_batch, 
+                'en_mask': en_mask_batch}
 
 
 
