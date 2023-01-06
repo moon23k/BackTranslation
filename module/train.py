@@ -10,6 +10,8 @@ class Trainer:
         super(Trainer, self).__init__()
         
         self.model = model
+        self.src = config.src
+        self.trg = config.trg
         self.task = config.task
         self.clip = config.clip
         self.device = config.device
@@ -55,18 +57,11 @@ class Trainer:
 
 
     def split_batch(self, batch):
-        if self.task == 'translation':
-            input_ids = batch['src_ids']
-            attention_mask =  batch['src_mask']
-            labels = batch['trg_ids']
-
-        elif self.task == 'back_translation':
-            input_ids = batch['trg_ids']
-            attention_mask = batch['trg_mask']
-            labels = batch['src_ids']
+        input_ids = batch[f'{self.src}_ids'].to(self.device)
+        attention_mask =  batch[f'{self.src}_mask'].to(self.device)
+        labels = batch[f'{self.trg}_ids'].to(self.device)
         
-        labels[labels==0] = -100
-        return input_ids.to(self.device), attention_mask.to(self.device), labels.to(self.device)
+        return input_ids, attention_mask, labels
 
 
     def train(self):

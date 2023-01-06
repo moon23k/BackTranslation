@@ -94,7 +94,7 @@ def inference(model, tokenizer):
 
         #convert user input_seq into model input_ids
         input_ids = tokenizer(input_seq)['input_ids']
-        output_ids = model.generate(input_ids, beam_size=4)
+        output_ids = model.generate(input_ids, beam_size=4, max_new_tokens=300, use_cache=True)
         output_seq = tokenizer.decode(output_ids, skip_special_tokens=True)
 
         #Search Output Sequence
@@ -146,6 +146,6 @@ if __name__ == '__main__':
 
     assert args.src in ['ko', 'en']
     assert args.trg in ['ko', 'en']    
-    assert args.mode in ['train', 'test', 'inference']
+    assert args.mode in ['train', 'test', 'inference', 'generate']
 
     main(args)

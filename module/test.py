@@ -12,7 +12,6 @@ class Tester:
         self.task = config.task
         self.tokenizer = tokenizer
         self.device = config.device
-        self.num_beams = config.num_beams
         self.dataloader = test_dataloader
         self.device_type = config.device_type
 
@@ -37,13 +36,13 @@ class Tester:
                 labels = batch[f'{self.trg}_ids'].to(self.device)
                                 
                 with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-                    preds = self.model.generate(input_ids, num_beams=self.num_beams, max_new_tokens=300, use_cache=True)
+                    preds = self.model.generate(input_ids, max_new_tokens=300, use_cache=True)
                 
                 preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
                 labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-                metric_module.add_batch(predictions=[p.split() for p in preds], 
-                                        references=[[l.split()] for l in labels])            
+                metric_module.add_batch(predictions=preds, 
+                                        references=[[l] for l in labels])    
 
         bleu_score = metric_module.compute()['bleu'] * 100
 

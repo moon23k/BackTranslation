@@ -5,7 +5,7 @@ from transformers import PreTrainedTokenizerFast
 
 
 def main():
-    processed, src_list, trg_list = [], [], []
+    processed, ko_list, en_list = [], [], []
     f_names = ['dialogue', 'spoken_1', 'spoken_2']
     tokenizer = PreTrainedTokenizerFast.from_pretrained('circulus/kobart-trans-en-ko-v2')
 
