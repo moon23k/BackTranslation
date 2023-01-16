@@ -35,8 +35,7 @@ class Tester:
                 input_ids = batch[f'{self.src}_ids'].to(self.device)
                 labels = batch[f'{self.trg}_ids'].to(self.device)
                                 
-                with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-                    preds = self.model.generate(input_ids, max_new_tokens=300, use_cache=True)
+                preds = self.model.generate(input_ids, max_new_tokens=300, use_cache=True)
                 
                 preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
                 labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)

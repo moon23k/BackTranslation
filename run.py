@@ -1,6 +1,4 @@
 import os, argparse, torch
-import torch.nn as nn
-import torch.optim as optim
 
 from module.test import Tester
 from module.train import Trainer
@@ -115,6 +113,29 @@ def test(config, model, tokenizer):
     return
 
 
+def filter_synthetic(pred, ref):
+    return
+
+
+def generate(config, model):
+    generated = []
+    train_dataloader = load_dataloader(config, 'train')
+    
+    model.eval()
+    with torch.no_grad():
+        for _, batch in enumerate(train_dataloader):   
+            
+            input_ids = batch[f'{config.src}_ids'].to(config.device)
+            labels = batch[f'{config.trg}_ids'].to(config.device)
+                            
+            with torch.autocast(device_type=config.device_type, dtype=torch.float16):
+                preds = model.generate(input_ids, max_new_tokens=300, use_cache=True)    
+    
+            
+    return
+
+
+
 def main(args):
     set_seed(42)
     config = Config(args.task, args.task)
@@ -130,6 +151,9 @@ def main(args):
     
     elif config.mode == 'test':
         test(config, model, tokenizer)
+
+    elif config.mode == 'generate':
+        inference(model, tokenizer)
     
     elif config.mode == 'inference':
         inference(model, tokenizer)

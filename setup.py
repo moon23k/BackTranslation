@@ -21,7 +21,7 @@ def main():
     for ko_seq, en_seq in zip(ko_list, en_list):
         temp = dict()
         ko_encodings = tokenizer(ko_seq, max_length=300, truncation=True, padding=True)
-        en_encodings = tokenizer(en_seq, max_length=300, truncation=True, padding=True)
+        en_encodings = tokenizer(en_seq.lower(), max_length=300, truncation=True, padding=True)
 
         temp['ko_ids'] = ko_encodings['input_ids']
         temp['ko_mask'] = ko_encodings['attention_mask']
