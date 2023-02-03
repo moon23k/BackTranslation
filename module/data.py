@@ -1,71 +1,69 @@
 import json, torch
 from torch.utils.data import DataLoader
-from torch.nn.utils.rnn import pad_sequence
 
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, split):
+    def __init__(self, config, split):
         super().__init__()
-        self.data = self.load_data(split)
+        
+        assert split in ['train', 'valid', 'test']
+        self.split = split
+        self.src = config.src
+        self.trg = config.trg
+        self.task = config.task
+        self.mode = config.mode
+        self.back_ratio = config.back_ratio
+        self.data = self.load_data()
 
-    @staticmethod
-    def load_data(split):
-        with open(f"data/{split}.json", 'r') as f:
+
+    def load_data(self):
+        with open(f"data/{self.split}.json", 'r') as f:
             data = json.load(f)
-        return data
+
+        if self.mode != 'train':
+            return data
+
+        else:
+            if self.back_ratio == 'zero':
+                return data
+
+            with open(f"data/{self.task}_samples.json", 'r') as f:
+                samples = json.load(f)
+            if self.back_ratio == 'half':
+                samples = samples[::2]
+
+            return data + samples
+
 
     def __len__(self):
         return len(self.data)
+
     
     def __getitem__(self, idx):
-        ko_ids = self.data[idx]['ko_ids']
-        ko_mask = self.data[idx]['ko_mask']
-
-        en_ids = self.data[idx]['en_ids']
-        en_mask = self.data[idx]['en_mask']
-        
-        return ko_ids, ko_mask, en_ids, en_mask
+        src = self.data[idx][f'{self.src}']
+        trg = self.data[idx][f'{self.trg}']
+        return src, trg
 
 
-def pad_batch(batch_list, pad_id):
-    return pad_sequence(batch_list,
-                        batch_first=True,
-                        padding_value=pad_id)
 
-
-def load_dataloader(config, split):
-    global pad_id
-    pad_id = config.pad_id    
-
+def load_dataloader(config, tokenizer, split):
+    
     def collate_fn(batch):
-        ko_ids_batch, ko_mask_batch = [], []
-        en_ids_batch, en_mask_batch = [], []
+        src_batch, trg_batch = [], []
+        for src, trg in batch:
+            src_batch.append(src) 
+            trg_batch.append(trg)
 
-        for ko_ids, ko_mask, en_ids, en_mask in batch:
+        src_encodings = tokenizer(src_batch, padding=True, truncation=True, return_tensors='pt')
+        trg_encodings = tokenizer(trg_batch, padding=True, truncation=True, return_tensors='pt')
 
-            ko_ids_batch.append(torch.LongTensor(ko_ids))
-            ko_mask_batch.append(torch.LongTensor(ko_mask))
-
-            en_ids_batch.append(torch.LongTensor(en_ids))
-            en_mask_batch.append(torch.LongTensor(en_mask))
-
-        
-        ko_ids_batch = pad_batch(ko_ids_batch, pad_id)
-        ko_mask_batch = pad_batch(ko_mask_batch, pad_id)
-        
-        en_ids_batch = pad_batch(en_ids_batch, pad_id)
-        en_mask_batch = pad_batch(en_mask_batch, pad_id)
+        return {'input_ids': src_encodings.input_ids,
+                'attention_mask': src_encodings.attention_mask,
+                'labels': trg_encodings.input_ids}
 
 
-        return {'ko_ids': ko_ids_batch, 
-                'ko_mask': ko_mask_batch,
-                'en_ids': en_ids_batch, 
-                'en_mask': en_mask_batch}
-
-
-
-    return DataLoader(Dataset(split), 
+    return DataLoader(Dataset(config, split), 
                       batch_size=config.batch_size, 
                       shuffle=True,
                       collate_fn=collate_fn,

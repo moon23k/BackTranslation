@@ -4,27 +4,34 @@ from module.test import Tester
 from module.train import Trainer
 from module.data import load_dataloader
 
+from tqdm import tqdm
 from transformers import (set_seed,
-                          BartConfig, 
-                          PreTrainedTokenizerFast, 
-                          BartForConditionalGeneration)
+                          T5Config,
+                          T5TokenizerFast,
+                          T5ForConditionalGeneration)
+
 
 
 class Config(object):
-    def __init__(self, src, trg, mode):    
+    def __init__(self, args):    
 
-        self.src = src
-        self.trg = trg
-        self.mode = mode
-        self.task = f"{src}-{trg}"
-        self.ckpt = f"ckpt/{self.task}.pt"
+        self.task = args.task
+        self.mode = args.mode
+        self.back_ratio = args.back_ratio
+        
+        self.src = self.task[:2]
+        self.trg = self.task[2:]
+        self.ckpt = f"ckpt/{self.task}_translator.pt"
 
         self.clip = 1
+        self.lr = 5e-4
+        self.max_len = 128
         self.n_epochs = 10
-        self.batch_size = 16
-        self.learning_rate = 5e-5
+        self.batch_size = 32
         self.iters_to_accumulate = 4
-        self.model_name = f'circulus/kobart-trans-{self.task}-v2'
+
+        self.max_vocab_size = 30000
+        self.tok_path = 'data/tokenizer'
         
         use_cuda = torch.cuda.is_available()
         self.device_type = 'cuda' if use_cuda else 'cpu'
@@ -40,25 +47,13 @@ class Config(object):
             print(f"* {attribute}: {value}")
 
 
-def load_model(config):
-    if config.mode == 'train':
-        model = BartForConditionalGeneration.from_pretrained(config.model_name)
-        print(f"Pretrained {config.task.upper()} BART Model for has loaded")
-    
-    if config.mode != 'train':
-        assert os.path.exists(config.ckpt)
-        model_config = BartConfig.from_pretrained(config.model_name)
-        model = BartForConditionalGeneration(model_config)
-        print(f"Initialized {config.task.upper()} BART Model has loaded")
 
-        model_state = torch.load(config.ckpt, map_location=config.device)['model_state_dict']
-        model.load_state_dict(model_state)
-        print(f"Trained Model states has loaded from {config.ckpt}")
+def print_model_desc(model):
 
     def count_params(model):
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         return params
-        
+
     def check_size(model):
         param_size, buffer_size = 0, 0
 
@@ -73,11 +68,29 @@ def load_model(config):
 
     print(f"--- Model Params: {count_params(model):,}")
     print(f"--- Model  Size : {check_size(model):.3f} MB\n")
+
+
+
+def load_model(config):
+
+    model_cfg = T5Config()
+    model_cfg.vocab_size = config.vocab_size
+    model_cfg.update({'decoder_start_token_id': config.pad_id})
+    model = T5ForConditionalGeneration(model_cfg)
+    print(f"Model for {config.task.upper()} Translator {config.mode.upper()} has loaded")
+
+    if config.mode != 'train':
+        assert os.path.exists(config.ckpt)
+        model_state = torch.load(config.ckpt, map_location=config.device)['model_state_dict']        
+        model.load_state_dict(model_state)
+        print(f"Model States has loaded from {config.ckpt}")
+
+    print_model_desc(model)
     return model.to(config.device)
 
 
 
-def inference(model, tokenizer):
+def inference(config, model, tokenizer):
     model.eval()
     print(f'--- Inference Process Started! ---')
     print('[ Type "quit" on user input to stop the Process ]')
@@ -92,11 +105,16 @@ def inference(model, tokenizer):
 
         #convert user input_seq into model input_ids
         input_ids = tokenizer(input_seq)['input_ids']
-        output_ids = model.generate(input_ids, beam_size=4, max_new_tokens=300, use_cache=True)
+        output_ids = model.generate(input_ids, 
+                                    beam_size=4,
+                                    do_sample=True, 
+                                    max_new_tokens=config.max_len, 
+                                    use_cache=True)
         output_seq = tokenizer.decode(output_ids, skip_special_tokens=True)
 
-        #Search Output Sequence
+        #Print Output Sequence
         print(f"Model Out Sequence >> {output_seq}")       
+
 
 
 def train(config, model):
@@ -106,6 +124,7 @@ def train(config, model):
     trainer.train()
 
 
+
 def test(config, model, tokenizer):
     test_dataloader = load_dataloader(config, 'test')
     tester = Tester(config, model, tokenizer, test_dataloader)
@@ -113,63 +132,39 @@ def test(config, model, tokenizer):
     return
 
 
-def filter_synthetic(pred, ref):
-    return
-
-
-def generate(config, model):
-    generated = []
-    train_dataloader = load_dataloader(config, 'train')
-    
-    model.eval()
-    with torch.no_grad():
-        for _, batch in enumerate(train_dataloader):   
-            
-            input_ids = batch[f'{config.src}_ids'].to(config.device)
-            labels = batch[f'{config.trg}_ids'].to(config.device)
-                            
-            with torch.autocast(device_type=config.device_type, dtype=torch.float16):
-                preds = model.generate(input_ids, max_new_tokens=300, use_cache=True)    
-    
-            
-    return
-
-
 
 def main(args):
     set_seed(42)
-    config = Config(args.task, args.task)
+    config = Config(args)
+
+    tokenizer = T5TokenizerFast.from_pretrained(config.tok_path, model_max_length=config.max_len)
+    setattr(config, 'pad_id', tokenizer.pad_token_id)
+    setattr(config, 'vocab_size', tokenizer.vocab_size)
     model = load_model(config)
 
-    setattr(config, 'pad_id', model.config.pad_token_id)
-
-    if config.task != 'train':
-        tokenizer = PreTrainedTokenizerFast.from_pretrained(config.model_name, model_max_length=300)
-
     if config.mode == 'train':
-        train(config, model)
-    
+        train(config, model, tokenizer)
+        return
+
     elif config.mode == 'test':
         test(config, model, tokenizer)
-
-    elif config.mode == 'generate':
-        inference(model, tokenizer)
+        return
     
     elif config.mode == 'inference':
-        inference(model, tokenizer)
-    
+        inference(config, model, tokenizer)
+        return
+
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-src', required=True)
-    parser.add_argument('-trg', required=True)
+    parser.add_argument('-task', required=True)
     parser.add_argument('-mode', required=True)
+    parser.add_argument('-back_ratio', required=True)
     
     args = parser.parse_args()
-
-    assert args.src in ['ko', 'en']
-    assert args.trg in ['ko', 'en']    
-    assert args.mode in ['train', 'test', 'inference', 'generate']
+    assert args.task in ['enko', 'koen']
+    assert args.mode in ['train', 'test', 'inference']
+    assert args.back_ratio in ['zero', 'half', 'full']
 
     main(args)

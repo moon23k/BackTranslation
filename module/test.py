@@ -12,8 +12,8 @@ class Tester:
         self.task = config.task
         self.tokenizer = tokenizer
         self.device = config.device
+        self.max_len = config.max_len
         self.dataloader = test_dataloader
-        self.device_type = config.device_type
 
 
     @staticmethod
@@ -32,10 +32,12 @@ class Tester:
         with torch.no_grad():
             for _, batch in enumerate(self.dataloader):   
                 
-                input_ids = batch[f'{self.src}_ids'].to(self.device)
-                labels = batch[f'{self.trg}_ids'].to(self.device)
+                input_ids = batch['input_ids'].to(self.device)
+                labels = batch['labels'].to(self.device)
                                 
-                preds = self.model.generate(input_ids, max_new_tokens=300, use_cache=True)
+                preds = self.model.generate(input_ids, 
+                                            max_new_tokens=self.max_len, 
+                                            use_cache=True)
                 
                 preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
                 labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
