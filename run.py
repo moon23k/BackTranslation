@@ -21,7 +21,8 @@ class Config(object):
         
         self.src = self.task[:2]
         self.trg = self.task[2:]
-        self.ckpt = f"ckpt/{self.task}_translator.pt"
+        self.tok_path = 'data/tokenizer'
+        self.ckpt = f"ckpt/{self.task}_{self.back_ratio}.pt"
 
         self.clip = 1
         self.lr = 5e-4
@@ -29,9 +30,6 @@ class Config(object):
         self.n_epochs = 10
         self.batch_size = 32
         self.iters_to_accumulate = 4
-
-        self.max_vocab_size = 30000
-        self.tok_path = 'data/tokenizer'
         
         use_cuda = torch.cuda.is_available()
         self.device_type = 'cuda' if use_cuda else 'cpu'
@@ -71,12 +69,22 @@ def print_model_desc(model):
 
 
 
+def init_weights(model):
+    initrange = 0.1
+    model.encoder.weight.data.uniform_(-initrange, initrange)
+    model.decoder.bias.data.zero_()
+    model.decoder.weight.data.uniform_(-initrange, initrange)    
+
+
+
 def load_model(config):
 
     model_cfg = T5Config()
     model_cfg.vocab_size = config.vocab_size
     model_cfg.update({'decoder_start_token_id': config.pad_id})
     model = T5ForConditionalGeneration(model_cfg)
+    model.apply(init_weights)
+
     print(f"Model for {config.task.upper()} Translator {config.mode.upper()} has loaded")
 
     if config.mode != 'train':
@@ -117,16 +125,16 @@ def inference(config, model, tokenizer):
 
 
 
-def train(config, model):
-    train_dataloader = load_dataloader(config, 'train')
-    valid_dataloader = load_dataloader(config, 'valid')
+def train(config, model, tokenizer):
+    train_dataloader = load_dataloader(config, tokenizer, 'train')
+    valid_dataloader = load_dataloader(config, tokenizer, 'valid')
     trainer = Trainer(config, model, train_dataloader, valid_dataloader)
     trainer.train()
 
 
 
 def test(config, model, tokenizer):
-    test_dataloader = load_dataloader(config, 'test')
+    test_dataloader = load_dataloader(config, tokenizer, 'test')
     tester = Tester(config, model, tokenizer, test_dataloader)
     tester.test()    
     return

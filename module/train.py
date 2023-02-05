@@ -53,14 +53,6 @@ class Trainer:
         return f"{elapsed_min}m {elapsed_sec}s"
 
 
-    def split_batch(self, batch):
-        input_ids = batch[f'{self.src}_ids'].to(self.device)
-        attention_mask =  batch[f'{self.src}_mask'].to(self.device)
-        labels = batch[f'{self.trg}_ids'].to(self.device)
-        
-        return input_ids, attention_mask, labels
-
-
     def train(self):
         best_loss, records = float('inf'), []
         for epoch in range(1, self.n_epochs + 1):
@@ -96,12 +88,14 @@ class Trainer:
         tot_len = len(self.train_dataloader)
 
         for idx, batch in enumerate(self.train_dataloader):
-            input_ids, attention_mask, labels = self.split_batch(batch)
+            input_ids = batch['input_ids'].to(self.device)
+            attention_mask =  batch['attention_mask'].to(self.device)
+            labels = batch['labels'].to(self.device)
 
             with torch.autocast(device_type=self.device_type, dtype=torch.float16):
                 loss = self.model(input_ids = input_ids, 
                                   attention_mask = attention_mask,
-                                  labels = labels)[0]
+                                  labels = labels).loss
                 loss = loss / self.iters_to_accumulate
             
             #Backward Loss
@@ -131,12 +125,14 @@ class Trainer:
         
         with torch.no_grad():
             for _, batch in enumerate(self.valid_dataloader):   
-                input_ids, attention_mask, labels = self.split_batch(batch)           
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask =  batch['attention_mask'].to(self.device)
+                labels = batch['labels'].to(self.device)           
                 
                 with torch.autocast(device_type=self.device_type, dtype=torch.float16):
                     loss = self.model(input_ids = input_ids, 
                                       attention_mask = attention_mask,
-                                      labels = labels)[0]
+                                      labels = labels).loss
 
                 epoch_loss += loss.item()
         
