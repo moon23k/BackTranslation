@@ -1,7 +1,8 @@
 import time, math, json, torch
 import torch.nn as nn
 import torch.amp as amp
-import torch.optim as optim
+from torch.optim import AdamW
+ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 
@@ -24,8 +25,8 @@ class Trainer:
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
 
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=config.lr)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
+        self.optimizer = AdamW(self.model.parameters(), lr=config.lr)
+        self.scheduler = ReduceLROnPlateau(self.optimizer, 'min')
         
         self.ckpt = config.ckpt
         self.record_path = f"ckpt/{config.task}.json"
