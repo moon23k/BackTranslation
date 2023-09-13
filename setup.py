@@ -1,129 +1,113 @@
-import os, json, argparse
-from collections import namedtuple
-
-import torch
-from torch.utils.data import DataLoader
-
+import yaml, json, arsparse, torch
 from run import Config
+from module import load_dataloader
+from transformers import MarianMTModel, AutoTokenizer
 
-from tokenizers.models import WordPiece
+from tokenizers.models import BPE
 from tokenizers import Tokenizer, normalizers
-from tokenizers.trainers import WordPieceTrainer
+from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.normalizers import NFD, Lowercase, StripAccents
 
-from transformers import AutoTokenizer, MarianMTModel
 
 
 
-
-class Dataset(torch.utils.data.Dataset):
-    def __init__(self):
-        super().__init__()
-        
-        with open("data/train.json", 'r') as f:
-            self.data = json.load(f)        
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        return self.data[idx]['src'], self.data[idx]['trg']
+def read_data(f_name):
+    with open(f"data/{f_name}", 'r') as f:
+        data = json.load(f)
+    return data
 
 
-
-def load_dataloader(tokenizer):
+def create_corpus():
+    corpus = []
+    f_names = os.listdir('data')
+    f_names = [f for f in f_names if 'json' in f]
     
-    def tokenize(tokenizer, batch):
-        return tokenizer(
-            batch, 
-            padding=True, 
-            truncation=True, 
-            return_tensors='pt'
-        ).input_ids
+    for f_name in f_names:
+        data = read_data(f_name)
 
+        for elem in data:
+            corpus.append(elem['src'])
+            corpus.append(elem['trg'])
 
-    def collate_fn(batch):
-        src_batch, trg_batch = zip(*batch)
-
-        src_encodings = tokenize(tokenizer, src_batch)
-        trg_encodings = tokenize(tokenizer, src_batch)
-
-        return {'src': src_encodings.input_ids,
-                'trg': trg_encodings.input_ids}
-
-
-    return DataLoader(
-        Dataset(), 
-        batch_size=32, 
-        shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=2,
-        pin_memory=True
-    )
+    with open('data/corpus.txt', 'w') as f:
+        f.write('\n'.join(corpus))
 
 
 
-def generate_samples():
-    samples = []
-
-    args = namedtuple('args')
-    config = Config(args)
+def train_tokenizer():
+    corpus_path = f'data/corpus.txt'
+    assert os.path.exists(corpus_path)
     
+    assert os.path.exists('config.yaml')
+    with open('config.yaml', 'r') as f:
+        vocab_config = yaml.load(f, Loader=yaml.FullLoader)['vocab']
+
+    tokenizer = Tokenizer(BPE(unk_token=vocab_config['unk_token']))
+    tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
+    tokenizer.pre_tokenizer = Whitespace()
+    trainer = BpeTrainer(
+        vocab_size=vocab_config['vocab_size'], 
+        special_tokens=[
+            vocab_config['pad_token'], 
+            vocab_config['unk_token'],
+            vocab_config['bos_token'],
+            vocab_config['eos_token']
+            ]
+        )
+
+    tokenizer.train(files=[corpus_path], trainer=trainer)
+    tokenizer.save(f"data/tokenizer.json")
+
+
+
+
+def generate_sample(config):
+    mname = config.mname
     device = config.device
-    mname = config.gen_mname  #'Helsinki-NLP/opus-mt-ko-en'
 
-    model = MarianMTModel.from_pretrained(mname).to(device)
     tokenizer = AutoTokenizer.from_pretrained(mname)
-    dataloader = load_dataloader(tokenizer)
+    model = MarianMTModel.from_pretrained(mname).to(device)
+    model.eval()
 
-    for elem in dataloader:
-        input_batch = elem['src'].to(device) 
-        label_batch = elem['trg'].tolist()
+    sample_dataloader = load_dataloader(config, tokenizer, 'train')
 
-        sample_batch = model.generate(
-            input_tensor, 
-            use_cache=True, 
-            num_beams=10, 
-            num_return_sequences=10
-        ).tolist()
+    samples = []
+    with torch.no_grad():
+        for batch in self.dataloader:
+            
+            x = batch['x'].to(device)
+            label = tokenizer.batch_decode(x, skip_special_tokens=True)
 
-        validated = validate_sample(sample, label)
-        
+            sample = model.generate(x, config.generate_config)
+            sample = tokenizer.batch_decode(sample, skip_special_tokens=True)
+            
+            for src, trg in zip(sample, label):
+                samples.append({'src': sample, 'trg': label})
 
-
-    return
-
-
-def validate_sample(sample, label):
-    for beam in sample:
-        for pred in sample:
-            if pred != label:
-
-
-
-    return
+    with open('data/sample.json', 'w') as f:
+        json.dump(f, samples)
 
 
 
 
-def save_data(data_obj, f_name):
-    with open(f'data/{f_name}.json', 'w') as f:
-        json.dump(data_obj, f)
-
-
-
-def main(strategy):
-
+def main(sampling):
     
+    if sampling is not None:
+        cfg_args = namedtuple('args')
+        config = Config(cfg_args)
+        generate_samples(config)
+
+    create_corpus()
+    train_tokenizer()
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-backtranslation', required=True)
-    
-    args = parser.parse_args()
-    assert args.strategy in ['back']
+    parser.add_argument('-sampling', default=None, required=True)
 
-    main(args.strategy)
+    args = parser.parse_args()
+    assert args.sampling in [None, 'greedy', 'beam', 'topk']
+
+    main(args.sampling)

@@ -1,5 +1,5 @@
 vocab:
-    vocab_size: 5000
+    vocab_size: 10000
     pad_id: 0
     unk_id: 1
     bos_id: 2
@@ -27,3 +27,32 @@ train:
     patience: 3
     clip: 1
     iters_to_accumulate: 4
+
+
+generate:
+    mname: 'Helsinki-NLP/opus-mt-ko-en'
+
+    greedy_config:
+        num_beams: 1
+        max_length: 512
+        num_return_sequences: 1
+        no_repeat_ngram_size: 10
+        do_sample: False
+        use_cache: True
+    
+    beam_config:
+        num_beams: 5
+        max_length: 512
+        num_return_sequences: 1
+        no_repeat_ngram_size: 10
+        do_sample: True
+        use_cache: True
+
+    topk_config:
+        num_beams: 5
+        max_length: 512
+        num_return_sequences: 1
+        no_repeat_ngram_size: 10
+        top_k: 5
+        do_sample: True
+        use_cache: True

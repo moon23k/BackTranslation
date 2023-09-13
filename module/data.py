@@ -1,18 +1,12 @@
 import os, json, torch
 from torch.utils.data import DataLoader
 
-from tokenizers.models import WordPiece
-from tokenizers import Tokenizer, normalizers
-from tokenizers.trainers import WordPieceTrainer
-from tokenizers.pre_tokenizers import Whitespace
-from tokenizers.normalizers import NFD, Lowercase, StripAccents
-
 
 
 
 class Dataset(torch.utils.data.Dataset):
 
-    def __init__(self, config, split):
+    def __init__(self, config, tokenizer, split):
         super().__init__()
         
         self.tokenizer = tokenizer
@@ -66,23 +60,3 @@ def load_dataloader(config, tokenizer, split):
     )
 
 
-
-def train_tokenizer(config):
-    corpus_path = f'data/corpus.txt'
-    assert os.path.exists(corpus_path)
-    
-    tokenizer = Tokenizer(WordPiece(unk_token=config.unk_token))
-    tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
-    tokenizer.pre_tokenizer = Whitespace()
-    trainer = WordPieceTrainer(
-        vocab_size=config.vocab_size, 
-        special_tokens=[
-            config.pad_token, 
-            config.unk_token,
-            config.bos_token,
-            config.eos_token
-            ]
-        )
-
-    tokenizer.train(files=[corpus_path], trainer=trainer)
-    tokenizer.save("data/tokenizer.json")    

@@ -26,7 +26,7 @@ class Trainer:
         self.valid_dataloader = valid_dataloader
 
         self.optimizer = AdamW(self.model.parameters(), lr=config.lr)
-        self.scheduler = ReduceLROnPlateau(self.optimizer, 'min')
+        self.scheduler = ReduceLROnPlateau(self.optimizer, patience=2)
         
         self.ckpt = config.ckpt
         self.record_path = f"ckpt/{config.task}.json"
