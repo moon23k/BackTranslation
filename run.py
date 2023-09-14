@@ -1,15 +1,31 @@
-import os, argparse, torch
+import os, yaml, argparse, torch
 
-from transformers import set_seed
 from tokenizers import Tokenizer
 from tokenizers.processors import TemplateProcessing
 
 from module import (
     load_dataloader,
+    load_model,
     Trainer, 
     Tester,
     Translator
 )
+
+
+
+
+def set_seed(SEED=42):
+    import random
+    import numpy as np
+    import torch.backends.cudnn as cudnn
+
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    cudnn.benchmark = False
+    cudnn.deterministic = True
 
 
 
@@ -32,8 +48,15 @@ class Config(object):
                            else 'cpu'
         self.device = torch.device(self.device_type)
 
-        self.ckpt = "ckpt/model.pt"
         self.tokenizer_path = 'data/tokenizer.json'
+        
+        if self.sampling is None:
+            self.ckpt = 'ckpt/base_model.pt'
+            self.generate_config = None
+        else:
+            self.ckpt = f'ckpt/{self.sampling}_sampled_model.pt'
+            self.generate_kwargs = self.generate_kwargs[self.sampling]
+
 
 
     def print_attr(self):
@@ -58,7 +81,7 @@ def load_tokenizer(config):
 
 
 def main(args):
-    set_seed(42)
+    set_seed()
     config = Config(args)
     model = load_model(config)
     tokenizer = load_tokenizer(config)

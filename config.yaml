@@ -31,28 +31,28 @@ train:
 
 generate:
     mname: 'Helsinki-NLP/opus-mt-ko-en'
+    generate_kwargs:
+        greedy:
+            num_beams: 1
+            max_length: 512
+            num_return_sequences: 1
+            no_repeat_ngram_size: 10
+            do_sample: False
+            use_cache: True
+        
+        beam:
+            num_beams: 5
+            max_length: 512
+            num_return_sequences: 1
+            no_repeat_ngram_size: 10
+            do_sample: True
+            use_cache: True
 
-    greedy_config:
-        num_beams: 1
-        max_length: 512
-        num_return_sequences: 1
-        no_repeat_ngram_size: 10
-        do_sample: False
-        use_cache: True
-    
-    beam_config:
-        num_beams: 5
-        max_length: 512
-        num_return_sequences: 1
-        no_repeat_ngram_size: 10
-        do_sample: True
-        use_cache: True
-
-    topk_config:
-        num_beams: 5
-        max_length: 512
-        num_return_sequences: 1
-        no_repeat_ngram_size: 10
-        top_k: 5
-        do_sample: True
-        use_cache: True
+        topk:
+            num_beams: 5
+            max_length: 512
+            num_return_sequences: 1
+            no_repeat_ngram_size: 10
+            top_k: 5
+            do_sample: True
+            use_cache: True

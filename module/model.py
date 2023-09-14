@@ -1,6 +1,6 @@
 import os, torch
 import torch.nn as nn
-from model.transformer import Transformer
+from model import Transformer
 
 
 

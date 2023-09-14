@@ -1,6 +1,10 @@
-import yaml, json, arsparse, torch
+import os, yaml, json, argparse, torch
+from collections import namedtuple
+
 from run import Config
 from module import load_dataloader
+
+from tqdm import tqdm
 from transformers import MarianMTModel, AutoTokenizer
 
 from tokenizers.models import BPE
@@ -27,11 +31,13 @@ def create_corpus():
         data = read_data(f_name)
 
         for elem in data:
-            corpus.append(elem['src'])
-            corpus.append(elem['trg'])
+            corpus.append(elem['src'].lower())
+            corpus.append(elem['trg'].lower())
 
     with open('data/corpus.txt', 'w') as f:
         f.write('\n'.join(corpus))
+
+    print(f"{f_names} have used to create corpus file")
 
 
 
@@ -62,40 +68,48 @@ def train_tokenizer():
 
 
 
-def generate_sample(config):
+def generate_samples(config):
+    
     mname = config.mname
     device = config.device
+    generate_kwargs = config.generate_kwargs
 
     tokenizer = AutoTokenizer.from_pretrained(mname)
     model = MarianMTModel.from_pretrained(mname).to(device)
+    torch.compile(model)
     model.eval()
 
     sample_dataloader = load_dataloader(config, tokenizer, 'train')
 
     samples = []
     with torch.no_grad():
-        for batch in self.dataloader:
+        for batch in tqdm(sample_dataloader):
             
-            x = batch['x'].to(device)
+            x = batch['y'].to(device)
             label = tokenizer.batch_decode(x, skip_special_tokens=True)
+            label = [x.replace('▁', ' ').strip() for x in label]
 
-            sample = model.generate(x, config.generate_config)
+            sample = model.generate(x, **generate_kwargs)
             sample = tokenizer.batch_decode(sample, skip_special_tokens=True)
             
             for src, trg in zip(sample, label):
-                samples.append({'src': sample, 'trg': label})
+                samples.append({'src': src, 'trg': trg})
 
-    with open('data/sample.json', 'w') as f:
-        json.dump(f, samples)
+    with open(f'data/{config.sampling}_sample.json', 'w') as f:
+        json.dump(samples, f)
 
 
 
 
 def main(sampling):
-    
-    if sampling is not None:
-        cfg_args = namedtuple('args')
-        config = Config(cfg_args)
+
+    if sampling != 'none':
+        args = namedtuple('args', 'mode sampling search')
+        args.mode = 'generate'
+        args.sampling = sampling
+        args.search = 'greedy'  #set to just default value
+
+        config = Config(args)
         generate_samples(config)
 
     create_corpus()
@@ -105,9 +119,9 @@ def main(sampling):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-sampling', default=None, required=True)
+    parser.add_argument('-sampling', default='None', required=True)
 
     args = parser.parse_args()
-    assert args.sampling in [None, 'greedy', 'beam', 'topk']
+    assert args.sampling.lower() in ['none', 'greedy', 'beam', 'topk']
 
     main(args.sampling)
