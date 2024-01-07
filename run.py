@@ -42,11 +42,11 @@ class Config(object):
         self.sampling = args.sampling
         self.search_method = args.search
 
-        use_cuda = torch.cuda.is_available()
-        self.device_type = 'cuda' \
-                           if use_cuda and self.mode != 'inference' \
-                           else 'cpu'
-        self.device = torch.device(self.device_type)
+
+        device_type = 'cuda' if torch.cuda.is_available() and \
+                      self.mode != 'inference' else 'cpu'
+        self.device_type = device_type
+        self.device = torch.device(device_type)
 
         self.tokenizer_path = 'data/tokenizer.json'
         
@@ -108,12 +108,12 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', required=True)
-    parser.add_argument('-sampling', default=None, required=True)
+    parser.add_argument('-sampling', default='None', required=True)
     parser.add_argument('-search', default='greedy', required=False)
     
     args = parser.parse_args()
-    assert args.mode in ['train', 'test', 'inference']
-    assert args.sampling in [None, 'greedy', 'beam', 'topk']
-    assert args.search in ['greedy', 'beam']
+    assert args.mode.lower() in ['train', 'test', 'inference']
+    assert args.sampling.lower() in ['none', 'greedy', 'beam', 'topk']
+    assert args.search.lower() in ['greedy', 'beam']
 
     main(args)

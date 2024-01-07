@@ -1,4 +1,4 @@
-import os, yaml, json, argparse, torch
+import os, yaml, json, torch
 from collections import namedtuple
 
 from run import Config
@@ -92,8 +92,8 @@ def generate_samples(config):
             sample = model.generate(x, **generate_kwargs)
             sample = tokenizer.batch_decode(sample, skip_special_tokens=True)
             
-            for src, trg in zip(sample, label):
-                samples.append({'src': src, 'trg': trg})
+            for s, l in zip(sample, label):
+                samples.append({'x': s, 'y': l})
 
     with open(f'data/{config.sampling}_sample.json', 'w') as f:
         json.dump(samples, f)
@@ -118,10 +118,4 @@ def main(sampling):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-sampling', default='None', required=True)
-
-    args = parser.parse_args()
-    assert args.sampling.lower() in ['none', 'greedy', 'beam', 'topk']
-
-    main(args.sampling)
+    main()
